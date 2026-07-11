@@ -48,19 +48,27 @@
   .field-row { display: flex; flex-wrap: wrap; gap: 10px; }
   .field { flex: 1 1 180px; display: flex; flex-direction: column; gap: 4px; }
   .field label { font-size: 0.78rem; color: var(--muted); }
-  .field input {
+  .field input, .field select {
     font-size: 0.9rem;
     padding: 8px 10px;
     border: 1px solid var(--border);
     border-radius: 7px;
     font-family: inherit;
+    background: #fff;
   }
-  .field input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field input:focus, .field select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .warn {
     font-size: 0.82rem;
     color: var(--accent-dark);
     margin-top: 10px;
     display: none;
+  }
+  .section-label {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 26px 0 10px;
   }
   .card {
     background: var(--bg-card);
@@ -91,6 +99,7 @@
   }
   .btn.secondary:hover { background: #fbecec; }
   .copied { font-size: 0.8rem; color: var(--accent); margin-left: 8px; display: none; }
+  .no-state-note { font-size: 0.88rem; color: var(--muted); font-style: italic; }
   footer { margin-top: 36px; font-size: 0.82rem; color: var(--muted); text-align: center; }
   .share-box {
     margin-top: 30px;
@@ -110,12 +119,12 @@
   </header>
 
   <div class="instructions">
-    <b>How this works:</b> Fill in your info once below (it stays only in your own browser, never sent anywhere but into your own messages). Then click <b>Email</b> on any card to open that message in your own email app, already addressed and filled in — just hit send. Where no direct email exists, click <b>Contact form</b> and then <b>Copy message</b> to paste it in. Feel free to forward this page — everyone who opens it fills in their own info.
+    <b>How this works:</b> Fill in your info below (it stays only in your own browser). Pick your state to get your two U.S. Senators automatically. Click <b>Email</b> to open a pre-filled message in your own email app — just hit send. Where there's no direct email, click <b>Contact form</b>, then <b>Copy message</b> to paste it in. Feel free to forward this page — everyone who opens it fills in their own info.
   </div>
 
   <div class="who-you-are">
     <h2>Your info (used in your message signatures)</h2>
-    <div class="hint">Stored only in this browser. Email is optional — leave it blank to send anonymously where the recipient allows it.</div>
+    <div class="hint">Stored only in this browser, never sent anywhere except into your own messages.</div>
     <div class="field-row">
       <div class="field">
         <label for="f-name">Your name</label>
@@ -129,50 +138,107 @@
         <label for="f-email">Your email (optional)</label>
         <input id="f-email" type="email" placeholder="you@example.com" autocomplete="email">
       </div>
+      <div class="field">
+        <label for="f-state">Your state (for Senators)</label>
+        <select id="f-state"></select>
+      </div>
     </div>
     <div class="warn" id="name-warn">Add your name above so recipients know who's contacting them — messages will send without one, but it carries more weight with a name attached.</div>
   </div>
 
   <div id="cards"></div>
 
+  <div class="section-label">Your U.S. Senators</div>
+  <div id="senator-cards"></div>
+
+  <div class="section-label">Your U.S. House Representative</div>
+  <div id="house-card"></div>
+
   <div class="share-box">
-    <b>Sharing this:</b> send this page's link to anyone — they fill in their own name and email at the top and use the same buttons. Nothing you type is stored anywhere but your own browser.
+    <b>Sharing this:</b> send this page's link to anyone, anywhere in the U.S. — they fill in their own name and state at the top and get their own Senators automatically. Nothing typed here is stored anywhere but the visitor's own browser.
   </div>
 
   <footer>Personal advocacy tool — not affiliated with any organization or employer.</footer>
 </div>
 
 <script>
-const FIELD_IDS = { name: 'f-name', location: 'f-location', email: 'f-email' };
 const STORAGE_PREFIX = 'freeDrAbuSafiya_';
 
-// Load saved values for this browser only
-Object.entries(FIELD_IDS).forEach(([key, id]) => {
-  const saved = localStorage.getItem(STORAGE_PREFIX + key);
-  if (saved) document.getElementById(id).value = saved;
-});
+const STATE_NAMES = {
+  AL:"Alabama", AK:"Alaska", AZ:"Arizona", AR:"Arkansas", CA:"California", CO:"Colorado",
+  CT:"Connecticut", DE:"Delaware", FL:"Florida", GA:"Georgia", HI:"Hawaii", ID:"Idaho",
+  IL:"Illinois", IN:"Indiana", IA:"Iowa", KS:"Kansas", KY:"Kentucky", LA:"Louisiana",
+  ME:"Maine", MD:"Maryland", MA:"Massachusetts", MI:"Michigan", MN:"Minnesota",
+  MS:"Mississippi", MO:"Missouri", MT:"Montana", NE:"Nebraska", NV:"Nevada",
+  NH:"New Hampshire", NJ:"New Jersey", NM:"New Mexico", NY:"New York", NC:"North Carolina",
+  ND:"North Dakota", OH:"Ohio", OK:"Oklahoma", OR:"Oregon", PA:"Pennsylvania",
+  RI:"Rhode Island", SC:"South Carolina", SD:"South Dakota", TN:"Tennessee", TX:"Texas",
+  UT:"Utah", VT:"Vermont", VA:"Virginia", WA:"Washington", WV:"West Virginia",
+  WI:"Wisconsin", WY:"Wyoming", DC:"Washington, D.C. / U.S. territory (no voting Senators)"
+};
 
-// Save on every change, and toggle the name-nudge warning
+// Source: official senate.gov contact directory (senators_cfm.xml), current as of March 2026.
+const SENATORS = {
+  AL:[["Katie Boyd Britt","https://www.britt.senate.gov/contact/"],["Tommy Tuberville","https://www.tuberville.senate.gov/contact/contact-form/"]],
+  AK:[["Lisa Murkowski","https://www.murkowski.senate.gov/public/index.cfm/contact"],["Dan Sullivan","https://www.sullivan.senate.gov/contact/email"]],
+  AZ:[["Ruben Gallego","https://www.gallego.senate.gov/"],["Mark Kelly","https://www.kelly.senate.gov/contact/contact-form/"]],
+  AR:[["John Boozman","https://www.boozman.senate.gov/public/index.cfm/contact"],["Tom Cotton","https://www.cotton.senate.gov/contact/contact-tom"]],
+  CA:[["Alex Padilla","https://www.padilla.senate.gov/contact/"],["Adam Schiff","https://www.schiff.senate.gov"]],
+  CO:[["Michael F. Bennet","https://www.bennet.senate.gov/public/index.cfm/contact"],["John W. Hickenlooper","https://www.hickenlooper.senate.gov/contact/"]],
+  CT:[["Richard Blumenthal","https://www.blumenthal.senate.gov/contact/"],["Christopher Murphy","https://www.murphy.senate.gov/contact"]],
+  DE:[["Lisa Blunt Rochester","https://www.bluntrochester.senate.gov/"],["Christopher A. Coons","https://www.coons.senate.gov/contact"]],
+  FL:[["Ashley Moody","https://www.moody.senate.gov"],["Rick Scott","https://www.rickscott.senate.gov/contact/contact"]],
+  GA:[["Jon Ossoff","https://www.ossoff.senate.gov/contact-us/"],["Raphael G. Warnock","https://www.warnock.senate.gov/contact/"]],
+  HI:[["Mazie K. Hirono","https://www.hirono.senate.gov/contact"],["Brian Schatz","https://www.schatz.senate.gov/contact"]],
+  ID:[["Mike Crapo","https://www.crapo.senate.gov/contact"],["James E. Risch","https://www.risch.senate.gov/public/index.cfm?p=Email"]],
+  IL:[["Tammy Duckworth","https://www.duckworth.senate.gov/content/contact-senator"],["Richard J. Durbin","https://www.durbin.senate.gov/contact/"]],
+  IN:[["Jim Banks","https://www.banks.senate.gov/"],["Todd Young","https://www.young.senate.gov/contact"]],
+  IA:[["Joni Ernst","https://www.ernst.senate.gov/public/index.cfm/contact"],["Chuck Grassley","https://www.grassley.senate.gov/contact"]],
+  KS:[["Roger Marshall","https://www.marshall.senate.gov/contact/"],["Jerry Moran","https://www.moran.senate.gov/public/index.cfm/e-mail-jerry"]],
+  KY:[["Mitch McConnell","https://www.mcconnell.senate.gov/public/index.cfm?p=contact"],["Rand Paul","https://www.paul.senate.gov/connect/email-rand"]],
+  LA:[["Bill Cassidy","https://www.cassidy.senate.gov/contact"],["John Kennedy","https://www.kennedy.senate.gov/public/email-me"]],
+  ME:[["Susan M. Collins","https://www.collins.senate.gov/contact"],["Angus S. King, Jr.","https://www.king.senate.gov/contact"]],
+  MD:[["Angela D. Alsobrooks","https://alsobrooks.senate.gov/"],["Chris Van Hollen","https://www.vanhollen.senate.gov/contact/email"]],
+  MA:[["Edward J. Markey","https://www.markey.senate.gov/contact"],["Elizabeth Warren","https://www.warren.senate.gov/?p=email_senator"]],
+  MI:[["Gary C. Peters","https://www.peters.senate.gov/contact/email-gary"],["Elissa Slotkin","https://www.slotkin.senate.gov/"]],
+  MN:[["Amy Klobuchar","https://www.klobuchar.senate.gov/public/index.cfm/contact"],["Tina Smith","https://www.smith.senate.gov/share-your-opinion/"]],
+  MS:[["Cindy Hyde-Smith","https://www.hydesmith.senate.gov/contact-senator"],["Roger F. Wicker","https://www.wicker.senate.gov/public/index.cfm/contact"]],
+  MO:[["Josh Hawley","https://www.hawley.senate.gov/contact-senator-hawley"],["Eric Schmitt","https://www.schmitt.senate.gov/contact/"]],
+  MT:[["Steve Daines","https://www.daines.senate.gov/connect/email-steve"],["Tim Sheehy","https://www.sheehy.senate.gov/"]],
+  NE:[["Deb Fischer","https://www.fischer.senate.gov/public/index.cfm/contact"],["Pete Ricketts","https://www.ricketts.senate.gov/contact/"]],
+  NV:[["Catherine Cortez Masto","https://www.cortezmasto.senate.gov/contact"],["Jacky Rosen","https://www.rosen.senate.gov/contact_jacky"]],
+  NH:[["Margaret Wood Hassan","https://www.hassan.senate.gov/content/contact-senator"],["Jeanne Shaheen","https://www.shaheen.senate.gov/contact/contact-jeanne"]],
+  NJ:[["Cory A. Booker","https://www.booker.senate.gov/?p=contact"],["Andy Kim","https://www.kim.senate.gov/"]],
+  NM:[["Martin Heinrich","https://www.heinrich.senate.gov/contact"],["Ben Ray Luján","https://www.lujan.senate.gov/contact/"]],
+  NY:[["Kirsten E. Gillibrand","https://www.gillibrand.senate.gov/contact/email-me"],["Charles E. Schumer","https://www.schumer.senate.gov/contact/email-chuck"]],
+  NC:[["Ted Budd","https://www.budd.senate.gov/contact/"],["Thom Tillis","https://www.tillis.senate.gov/public/index.cfm/email-me"]],
+  ND:[["Kevin Cramer","https://www.cramer.senate.gov/contact/contact-kevin"],["John Hoeven","https://www.hoeven.senate.gov/contact/contact-the-senator"]],
+  OH:[["Jon Husted","https://www.husted.senate.gov"],["Bernie Moreno","https://www.moreno.senate.gov"]],
+  OK:[["Alan Armstrong","https://www.armstrong.senate.gov/"],["James Lankford","https://www.lankford.senate.gov/contact/email"]],
+  OR:[["Jeff Merkley","https://www.merkley.senate.gov/contact/"],["Ron Wyden","https://www.wyden.senate.gov/contact/"]],
+  PA:[["John Fetterman","https://www.fetterman.senate.gov/contact/"],["David McCormick","https://mccormick.senate.gov/"]],
+  RI:[["Jack Reed","https://www.reed.senate.gov/contact/"],["Sheldon Whitehouse","https://www.whitehouse.senate.gov/contact/email-sheldon"]],
+  SC:[["Lindsey Graham","https://www.lgraham.senate.gov/public/index.cfm/e-mail-senator-graham"],["Tim Scott","https://www.scott.senate.gov/contact/email-me"]],
+  SD:[["Mike Rounds","https://www.rounds.senate.gov/contact/email-mike"],["John Thune","https://www.thune.senate.gov/public/index.cfm/contact"]],
+  TN:[["Marsha Blackburn","https://www.blackburn.senate.gov/email-me"],["Bill Hagerty","https://www.hagerty.senate.gov/email-me/"]],
+  TX:[["John Cornyn","https://www.cornyn.senate.gov/contact"],["Ted Cruz","https://www.cruz.senate.gov/?p=form&id=16"]],
+  UT:[["John R. Curtis","https://www.curtis.senate.gov/"],["Mike Lee","https://www.lee.senate.gov/public/index.cfm/contact"]],
+  VT:[["Bernard Sanders","https://www.sanders.senate.gov/contact/"],["Peter Welch","https://www.welch.senate.gov/email-peter/"]],
+  VA:[["Tim Kaine","https://www.kaine.senate.gov/contact"],["Mark R. Warner","https://www.warner.senate.gov/public/index.cfm?p=Contact"]],
+  WA:[["Maria Cantwell","https://www.cantwell.senate.gov/public/index.cfm/email-maria"],["Patty Murray","https://www.murray.senate.gov/write-to-patty/"]],
+  WV:[["Shelley Moore Capito","https://www.capito.senate.gov/contact/contact-shelley"],["James C. Justice","https://www.justice.senate.gov/"]],
+  WI:[["Tammy Baldwin","https://www.baldwin.senate.gov/feedback"],["Ron Johnson","https://www.ronjohnson.senate.gov/public/index.cfm/email-the-senator"]],
+  WY:[["John Barrasso","https://www.barrasso.senate.gov/public/index.cfm/contact-form"],["Cynthia M. Lummis","https://www.lummis.senate.gov/contact/contact-form/"]]
+};
+
 function getInfo() {
   return {
-    name: document.getElementById(FIELD_IDS.name).value.trim(),
-    location: document.getElementById(FIELD_IDS.location).value.trim(),
-    email: document.getElementById(FIELD_IDS.email).value.trim()
+    name: document.getElementById('f-name').value.trim(),
+    location: document.getElementById('f-location').value.trim(),
+    email: document.getElementById('f-email').value.trim(),
+    state: document.getElementById('f-state').value
   };
 }
-
-function updateWarn() {
-  const info = getInfo();
-  document.getElementById('name-warn').style.display = info.name ? 'none' : 'block';
-}
-
-Object.entries(FIELD_IDS).forEach(([key, id]) => {
-  document.getElementById(id).addEventListener('input', (e) => {
-    localStorage.setItem(STORAGE_PREFIX + key, e.target.value);
-    updateWarn();
-  });
-});
-updateWarn();
 
 function buildSignature() {
   const info = getInfo();
@@ -183,6 +249,40 @@ function buildSignature() {
   return lines.join('\n');
 }
 
+function residentClause() {
+  const info = getInfo();
+  return info.location ? `As a resident of ${info.location}, ` : '';
+}
+
+// ---- Populate state dropdown ----
+const stateSelect = document.getElementById('f-state');
+stateSelect.innerHTML = '<option value="">Select your state…</option>' +
+  Object.keys(STATE_NAMES).map(code => `<option value="${code}">${STATE_NAMES[code]}</option>`).join('');
+
+// ---- Load saved values ----
+const FIELD_IDS = { name: 'f-name', location: 'f-location', email: 'f-email', state: 'f-state' };
+Object.entries(FIELD_IDS).forEach(([key, id]) => {
+  const saved = localStorage.getItem(STORAGE_PREFIX + key);
+  if (saved) document.getElementById(id).value = saved;
+});
+
+function updateWarn() {
+  document.getElementById('name-warn').style.display = getInfo().name ? 'none' : 'block';
+}
+
+Object.entries(FIELD_IDS).forEach(([key, id]) => {
+  document.getElementById(id).addEventListener('input', (e) => {
+    localStorage.setItem(STORAGE_PREFIX + key, e.target.value);
+    updateWarn();
+    if (key === 'state') renderCongress();
+  });
+  document.getElementById(id).addEventListener('change', (e) => {
+    if (key === 'state') renderCongress();
+  });
+});
+updateWarn();
+
+// ---- Static (non-Congressional) recipients ----
 const recipients = [
   {
     org: "OHCHR (UN Human Rights Office)",
@@ -190,7 +290,7 @@ const recipients = [
     why: "The main UN human rights body; petitions here can be escalated internally.",
     to: "InfoDesk@ohchr.org,ohchr-petitions@un.org",
     subject: "Urgent Petition: Immediate Release of Dr. Hussam Abu Safiya",
-    body: `Dear OHCHR colleagues,
+    body: () => `Dear OHCHR colleagues,
 
 I am writing to urge the immediate, unconditional release of Dr. Hussam Abu Safiya, pediatrician and director of Gaza's Kamal Adwan Hospital, who has been held by Israel without charge since December 2024.
 
@@ -207,7 +307,7 @@ Thank you for your urgent attention to this case.`
     to: "sr-torture@ohchr.org,urgent-action@ohchr.org",
     formUrl: "https://spsubmission.ohchr.org/",
     subject: "Urgent Appeal: Life-Threatening Detention of Dr. Hussam Abu Safiya",
-    body: `Dear Special Rapporteurs,
+    body: () => `Dear Special Rapporteurs,
 
 I submit this urgent appeal regarding Dr. Hussam Abu Safiya, pediatrician and director of Gaza's Kamal Adwan Hospital, detained by Israel without charge since December 2024. His lawyer's July 2 visit documented fresh torture marks, shackling, and a near-unconscious state following transfer to the Rakefet unit of Nitzan prison. Israel's Supreme Court rejected his release appeal on June 16, extending his detention to at least October 2026.
 
@@ -219,7 +319,7 @@ Given the mandates on torture, the right to health, and the situation in the OPT
     why: "The ICRC has a mandate to visit detainees and press for humane treatment.",
     to: "jer_jerusalem@icrc.org,ram_ramallah_mailbox@icrc.org",
     subject: "Request for Urgent ICRC Intervention: Dr. Hussam Abu Safiya",
-    body: `Dear ICRC colleagues,
+    body: () => `Dear ICRC colleagues,
 
 I am writing regarding Dr. Hussam Abu Safiya, held in Israeli detention since December 2024, now reported to be in life-threatening condition after severe abuse at Nitzan prison's Rakefet unit. I understand ICRC has faced restricted access to Palestinian detainees since October 2023.
 
@@ -231,7 +331,7 @@ I urge ICRC to press, through all available bilateral channels, for immediate, i
     why: "Their lawyer visited Dr. Abu Safiya on July 2 and is actively litigating his case.",
     formUrl: "https://www.phr.org.il/en/",
     subject: "Solidarity and Support for Your Advocacy on Dr. Hussam Abu Safiya",
-    body: `Dear PHRI team,
+    body: () => `Dear PHRI team,
 
 Thank you for your legal advocacy and your lawyer's July 2 visit documenting Dr. Hussam Abu Safiya's condition. I'm writing in support of your continued efforts and to ask how concerned individuals abroad can best help, whether through further petitions, donations, or amplifying your findings, to keep pressure on Israeli authorities for his immediate release and access to independent medical care.`
   },
@@ -241,7 +341,7 @@ Thank you for your legal advocacy and your lawyer's July 2 visit documenting Dr.
     why: "A WHO statement would invoke the protected status of medical personnel under international law.",
     to: "info@who.int",
     subject: "Request for WHO Statement: Detained Gaza Physician Dr. Hussam Abu Safiya",
-    body: `Dear WHO colleagues,
+    body: () => `Dear WHO colleagues,
 
 I am asking WHO to publicly condemn the continued arbitrary detention and reported torture of Dr. Hussam Abu Safiya, director of Kamal Adwan Hospital, now in life-threatening condition, and to join UN calls for his immediate release along with the estimated 95+ Palestinian health workers still held. A WHO statement invoking the protected status of medical personnel under international humanitarian law would add significant weight to this case.`
   },
@@ -251,51 +351,13 @@ I am asking WHO to publicly condemn the continued arbitrary detention and report
     why: "The U.S. has significant diplomatic leverage with Israel.",
     formUrl: "https://www.state.gov/contact-us/",
     subject: "Urgent Request: U.S. Pressure for Release of Dr. Hussam Abu Safiya",
-    body: `Dear Sir/Madam,
+    body: () => `Dear Sir/Madam,
 
-I urge the State Department to press the Israeli government, through all diplomatic channels, for the immediate release of Dr. Hussam Abu Safiya, a hospital director detained without charge since December 2024 and now reportedly in life-threatening condition from torture. Given the U.S.'s close relationship with Israel, direct intervention could be decisive in securing his release and independent medical treatment.`
-  },
-  {
-    org: "Senator Alex Padilla (CA)",
-    role: "Constituent request",
-    why: "Constituent pressure on senators can prompt public statements or oversight action.",
-    formUrl: "https://www.padilla.senate.gov/contact/",
-    subject: "Constituent Request: Urgent Action for Dr. Hussam Abu Safiya",
-    body: `Dear Senator Padilla,
-
-I'm writing to ask you to publicly call for the immediate release of Dr. Hussam Abu Safiya, director of Gaza's Kamal Adwan Hospital, detained by Israel without charge since December 2024. His lawyer's July 2 visit documented severe torture and a life-threatening condition; Israel's Supreme Court nonetheless extended his detention to October 2026. UN experts and the Independent Commission of Inquiry on the OPT have called for his release.
-
-I ask that you press the State Department and Israeli officials for his immediate release and independent medical access, and support congressional oversight of U.S. aid conditioned on treatment of detained Palestinian medical personnel.`
-  },
-  {
-    org: "Senator Adam Schiff (CA)",
-    role: "Constituent request",
-    why: "Constituent pressure on senators can prompt public statements or oversight action.",
-    formUrl: "https://www.schiff.senate.gov/contact/",
-    subject: "Constituent Request: Urgent Action for Dr. Hussam Abu Safiya",
-    body: `Dear Senator Schiff,
-
-I'm writing to ask you to publicly call for the immediate release of Dr. Hussam Abu Safiya, director of Gaza's Kamal Adwan Hospital, detained by Israel without charge since December 2024. His lawyer's July 2 visit documented severe torture and a life-threatening condition; Israel's Supreme Court nonetheless extended his detention to October 2026. UN experts and the Independent Commission of Inquiry on the OPT have called for his release.
-
-I ask that you press the State Department and Israeli officials for his immediate release and independent medical access, and support congressional oversight of U.S. aid conditioned on treatment of detained Palestinian medical personnel.`
-  },
-  {
-    org: "Rep. Nancy Pelosi (CA-11)",
-    role: "Constituent request",
-    why: "The sitting House representative for San Francisco.",
-    formUrl: "https://pelosi.house.gov/contact",
-    subject: "Constituent Request: Urgent Action for Dr. Hussam Abu Safiya",
-    body: `Dear Representative Pelosi,
-
-I'm writing as a constituent to ask you to speak out for the immediate release of Dr. Hussam Abu Safiya, director of Gaza's Kamal Adwan Hospital, held without charge since December 2024 and now reported to be in life-threatening condition after severe torture. Israel's Supreme Court extended his detention to October 2026 despite UN calls for release.
-
-Please raise this case publicly and with the State Department, and support oversight of U.S. security assistance in light of the treatment of detained Palestinian medical personnel.`
+${residentClause()}I urge the State Department to press the Israeli government, through all diplomatic channels, for the immediate release of Dr. Hussam Abu Safiya, a hospital director detained without charge since December 2024 and now reportedly in life-threatening condition from torture. Given the U.S.'s close relationship with Israel, direct intervention could be decisive in securing his release and independent medical treatment.`
   }
 ];
 
-const container = document.getElementById('cards');
-
-recipients.forEach((r, i) => {
+function renderCard(container, r, i) {
   const card = document.createElement('div');
   card.className = 'card';
   card.innerHTML = `
@@ -306,30 +368,138 @@ recipients.forEach((r, i) => {
       ${r.to ? `<button class="btn" data-action="email" data-idx="${i}">Email</button>` : ''}
       ${r.formUrl ? `<a class="btn ${r.to ? 'secondary' : ''}" href="${r.formUrl}" target="_blank" rel="noopener">Contact form</a>` : ''}
       <button class="btn secondary" data-action="copy" data-idx="${i}">Copy message</button>
-      <span class="copied" id="copied-${i}">Copied ✓</span>
+      <span class="copied" id="copied-${container.id}-${i}">Copied ✓</span>
     </div>
   `;
   container.appendChild(card);
+}
+
+function wireContainer(container, list) {
+  container.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-idx]');
+    if (!btn) return;
+    const idx = btn.getAttribute('data-idx');
+    const r = list[idx];
+    const fullBody = r.body() + buildSignature();
+
+    if (btn.getAttribute('data-action') === 'email') {
+      window.location.href = `mailto:${r.to}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(fullBody)}`;
+    } else if (btn.getAttribute('data-action') === 'copy') {
+      const text = `Subject: ${r.subject}\n\n${fullBody}`;
+      navigator.clipboard.writeText(text).then(() => {
+        const el = document.getElementById(`copied-${container.id}-${idx}`);
+        if (el) {
+          el.style.display = 'inline';
+          setTimeout(() => { el.style.display = 'none'; }, 2000);
+        }
+      });
+    }
+  });
+}
+
+const staticContainer = document.getElementById('cards');
+staticContainer.id = 'cards';
+recipients.forEach((r, i) => renderCard(staticContainer, r, i));
+wireContainer(staticContainer, recipients);
+
+// ---- Congressional (state-dependent) ----
+const senatorContainer = document.getElementById('senator-cards');
+const houseContainer = document.getElementById('house-card');
+let currentSenatorList = [];
+
+function senatorTemplate(fullName) {
+  const lastName = fullName.split(' ').slice(-1)[0];
+  return {
+    org: `Senator ${fullName}`,
+    role: "Constituent request",
+    why: "One of your two U.S. Senators.",
+    subject: "Constituent Request: Urgent Action for Dr. Hussam Abu Safiya",
+    body: () => `Dear Senator ${lastName},
+
+${residentClause()}I'm writing to ask you to publicly call for the immediate release of Dr. Hussam Abu Safiya, director of Gaza's Kamal Adwan Hospital, detained by Israel without charge since December 2024. His lawyer's July 2 visit documented severe torture and a life-threatening condition; Israel's Supreme Court nonetheless extended his detention to October 2026. UN experts and the Independent Commission of Inquiry on the OPT have called for his release.
+
+I ask that you press the State Department and Israeli officials for his immediate release and independent medical access, and support congressional oversight of U.S. aid conditioned on treatment of detained Palestinian medical personnel.`
+  };
+}
+
+function renderCongress() {
+  const info = getInfo();
+  senatorContainer.innerHTML = '';
+  houseContainer.innerHTML = '';
+  currentSenatorList = [];
+
+  if (!info.state) {
+    senatorContainer.innerHTML = '<div class="no-state-note">Select your state above to generate messages to your two Senators.</div>';
+    houseContainer.innerHTML = '<div class="no-state-note">Select your state above, then use the House lookup tool below.</div>';
+  } else if (!SENATORS[info.state]) {
+    senatorContainer.innerHTML = `<div class="no-state-note">${STATE_NAMES[info.state]} is not represented by voting U.S. Senators.</div>`;
+  } else {
+    currentSenatorList = SENATORS[info.state].map(([name, url]) => {
+      const t = senatorTemplate(name);
+      t.formUrl = url;
+      return t;
+    });
+    currentSenatorList.forEach((r, i) => renderCard(senatorContainer, r, i));
+  }
+
+  const houseCard = document.createElement('div');
+  houseCard.className = 'card';
+  houseCard.innerHTML = `
+    <h2>Your House Representative</h2>
+    <div class="role">Constituent request</div>
+    <div class="why">House districts are redrawn too often to reliably auto-detect. Use the official government tool to find yours by ZIP code, then paste the message below into their contact form.</div>
+    <div class="actions">
+      <a class="btn" href="https://ziplook.house.gov/htbin/findrep_house" target="_blank" rel="noopener">Find my Representative (official House lookup)</a>
+      <button class="btn secondary" data-action="copy" data-idx="0">Copy message</button>
+      <span class="copied" id="copied-house-card-0">Copied ✓</span>
+    </div>
+  `;
+  houseContainer.appendChild(houseCard);
+}
+
+const houseTemplate = {
+  subject: "Constituent Request: Urgent Action for Dr. Hussam Abu Safiya",
+  body: () => `Dear Representative,
+
+${residentClause()}I'm writing to ask you to speak out for the immediate release of Dr. Hussam Abu Safiya, director of Gaza's Kamal Adwan Hospital, held without charge since December 2024 and now reported to be in life-threatening condition after severe torture. Israel's Supreme Court extended his detention to October 2026 despite UN calls for release.
+
+Please raise this case publicly and with the State Department, and support oversight of U.S. security assistance in light of the treatment of detained Palestinian medical personnel.`
+};
+
+houseContainer.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-action="copy"]');
+  if (!btn) return;
+  const fullBody = houseTemplate.body() + buildSignature();
+  const text = `Subject: ${houseTemplate.subject}\n\n${fullBody}`;
+  navigator.clipboard.writeText(text).then(() => {
+    const el = document.getElementById('copied-house-card-0');
+    if (el) {
+      el.style.display = 'inline';
+      setTimeout(() => { el.style.display = 'none'; }, 2000);
+    }
+  });
 });
 
-container.addEventListener('click', (e) => {
+senatorContainer.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-idx]');
   if (!btn) return;
   const idx = btn.getAttribute('data-idx');
-  const r = recipients[idx];
-  const fullBody = r.body + buildSignature();
-
-  if (btn.getAttribute('data-action') === 'email') {
-    window.location.href = `mailto:${r.to}?subject=${encodeURIComponent(r.subject)}&body=${encodeURIComponent(fullBody)}`;
-  } else if (btn.getAttribute('data-action') === 'copy') {
+  const r = currentSenatorList[idx];
+  if (!r) return;
+  const fullBody = r.body() + buildSignature();
+  if (btn.getAttribute('data-action') === 'copy') {
     const text = `Subject: ${r.subject}\n\n${fullBody}`;
     navigator.clipboard.writeText(text).then(() => {
-      const el = document.getElementById(`copied-${idx}`);
-      el.style.display = 'inline';
-      setTimeout(() => { el.style.display = 'none'; }, 2000);
+      const el = document.getElementById(`copied-senator-cards-${idx}`);
+      if (el) {
+        el.style.display = 'inline';
+        setTimeout(() => { el.style.display = 'none'; }, 2000);
+      }
     });
   }
 });
+
+renderCongress();
 </script>
 </body>
 </html>
